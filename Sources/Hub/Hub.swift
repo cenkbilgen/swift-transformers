@@ -11,18 +11,29 @@ public struct Hub {}
 
 public extension Hub {
     enum HubClientError: Error {
-        case download
+        case invalidURL
+        case download(Int?)
         case parse
     }
     
     static func download(url: URL) async throws -> Data {
-        let (data, _) = try await URLSession.shared.data(from: url)
+        let (data, response) = try await URLSession.shared.data(from: url)
+        let statusCode = (response as? HTTPURLResponse)?.statusCode
+        guard statusCode == 200 else {
+            print("Download Error for \(url.absoluteString). \(statusCode?.description ?? "-")")
+            throw HubClientError.download(statusCode)
+        }
+        print("\(url.absoluteString) - \(data.count) bytes")
         return data
     }
     
     static func download(url: String) async throws -> Data {
-        guard let realUrl = URL(string: url) else { throw HubClientError.download }
-        let (data, _) = try await URLSession.shared.data(from: realUrl)
+        guard let realUrl = URL(string: url) else {
+            print("Bad URl. \(url)")
+            throw HubClientError.invalidURL
+        }
+        // let (data, _) = try await URLSession.shared.data(from: realUrl)
+        let data = try await download(url: url)
         return data
     }
     
@@ -32,7 +43,7 @@ public extension Hub {
         let url = "https://huggingface.co/\(repoId)/resolve/main/\(filename)"
         let data = try await download(url: url)
         
-        let parsed = try JSONSerialization.jsonObject(with: data, options: [])
+        let parsed = try JSONSerialization.jsonObject(with: data, options: [.fragmentsAllowed])
         guard let dictionary = parsed as? [String: Any] else { throw HubClientError.parse }
         return Config(dictionary)
     }
