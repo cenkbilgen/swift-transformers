@@ -41,10 +41,12 @@ public extension Hub {
     /// Returns a `Config` (just a dictionary wrapper) as I'm not sure we can use the same object structure for all tokenizers or models
     static func downloadConfig(repoId: String, filename: String) async throws -> Config {
         let url = "https://huggingface.co/\(repoId)/resolve/main/\(filename)"
+        print("Downloading \(url) started.")
         let data = try await download(url: url)
         
         let parsed = try JSONSerialization.jsonObject(with: data, options: [.fragmentsAllowed])
         guard let dictionary = parsed as? [String: Any] else { throw HubClientError.parse }
+        print("Downloading \(url) complete. \(dictionary.count) entries parsed.")
         return Config(dictionary)
     }
 }
@@ -165,13 +167,17 @@ public class LanguageModelConfigurationFromHub {
 
     func loadConfig(modelName: String) async throws -> Configurations {
         // TODO: caching
-        async let modelConfig = try Hub.downloadConfig(repoId: modelName, filename: "config.json")
-        async let tokenizerConfig = try Hub.downloadConfig(repoId: modelName, filename: "tokenizer_config.json")
-        async let tokenizerVocab = try Hub.downloadConfig(repoId: modelName, filename: "tokenizer.json")
-
-        // Note tokenizerConfig may be nil (does not exist in all models)
-        let configs = await Configurations(modelConfig: try modelConfig, tokenizerConfig: try? tokenizerConfig, tokenizerData: try tokenizerVocab)
-        return configs
+        do {
+            async let modelConfig = try Hub.downloadConfig(repoId: modelName, filename: "config.json")
+            async let tokenizerConfig = try Hub.downloadConfig(repoId: modelName, filename: "tokenizer_config.json")
+            async let tokenizerVocab = try Hub.downloadConfig(repoId: modelName, filename: "tokenizer.json")
+            // Note tokenizerConfig may be nil (does not exist in all models)
+            let configs = await Configurations(modelConfig: try modelConfig, tokenizerConfig: try? tokenizerConfig, tokenizerData: try tokenizerVocab)
+            return configs
+        } catch {
+            print("Download Config Failed. \(error)")
+            throw error
+        }
     }
 
     static func fallbackTokenizerConfig(for modelType: String) -> Config? {
